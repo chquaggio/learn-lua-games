@@ -1,0 +1,12 @@
+These are notes from the lua programming course.
+
+When you start a new game with love, always define three fundamental functions: 
+- Load
+- Update
+- Draw
+
+Load: this function is called once at the beginning of the game. It's where you load your assets, initialize variables, and set up the game state.
+
+Update: defines the game loop. This function is called every frame, and it's where we will update the game state, check for collisions, and handle user input.
+
+Draw: this function is called every frame after the update function. It's where we will render the game objects to the screen.
