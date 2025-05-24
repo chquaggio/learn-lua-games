@@ -1,0 +1,4 @@
+{
+    "completion.autoRequire": false,
+    "diagnostics.disable": ["lowercase-global"]
+}
