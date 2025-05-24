@@ -63,19 +63,27 @@ function love.draw()
 end
 
 function love.mousepressed(x, y, button, istouch, presses)
-	if button == 1 and gameState == 2 then
-		local dx = x - target.x
-		local dy = y - target.y
-		local distance = math.sqrt(dx * dx + dy * dy)
-
-		if distance < target.radius then
-			score = score + 1
+	if gameState == 2 then
+		if distance(x, y, target.x, target.y) <= target.radius then
+			if button == 1 then
+				score = score + 1
+			elseif button == 2 then
+				score = score + 2
+				timer = timer - 1
+			end
 			target.x = math.random(target.radius, love.graphics.getWidth() - target.radius)
 			target.y = math.random(target.radius, love.graphics.getHeight() - target.radius)
+		else
+			score = score - 1
+			score = math.max(score, 0) -- Ensure score doesn't go negative
 		end
 	elseif button == 1 and gameState == 1 then
 		gameState = 2
 		timer = 30
 		score = 0
 	end
+end
+
+function distance(x1, y1, x2, y2)
+	return math.sqrt((x2 - x1) ^ 2 + (y2 - y1) ^ 2)
 end
