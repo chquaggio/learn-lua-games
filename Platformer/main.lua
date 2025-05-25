@@ -11,6 +11,15 @@ function love.load()
 	sprites.playerSheet = love.graphics.newImage("assets/sprites/playerSheet.png")
 	sprites.enemySheet = love.graphics.newImage("assets/sprites/enemySheet.png")
 	sprites.flag = love.graphics.newImage("assets/maps/flag.png")
+	sprites.background = love.graphics.newImage("assets/sprites/background.png")
+
+	sounds = {}
+	sounds.jump = love.audio.newSource("assets/media/jump.wav", "static")
+	sounds.music = love.audio.newSource("assets/media/music.mp3", "stream")
+	sounds.music:setLooping(true)
+	sounds.music:setVolume(0.1)
+
+	sounds.music:play()
 
 	local grid = anim8.newGrid(614, 564, sprites.playerSheet:getWidth(), sprites.playerSheet:getHeight())
 	local enemyGrid = anim8.newGrid(100, 79, sprites.enemySheet:getWidth(), sprites.enemySheet:getHeight())
@@ -33,8 +42,8 @@ function love.load()
 	world:addCollisionClass("Danger")
 	world:addCollisionClass("Player"--[[, { ignores = { "Platform" } }]])
 
-	-- dangerZone = world:newRectangleCollider(0, 550, 800, 50, { collision_class = "Danger" })
-	-- dangerZone:setType("static")
+	dangerZone = world:newRectangleCollider(-500, 800, 3000, 50, { collision_class = "Danger" })
+	dangerZone:setType("static")
 
 	platforms = {}
 
@@ -43,6 +52,10 @@ function love.load()
 	saveData = {}
 
 	saveData.currentLevel = 1
+	if love.filesystem.getInfo("data.lua") then
+		local data = love.filesystem.load("data.lua")
+		data()
+	end
 	hasWon = false
 
 	loadMap("level" .. saveData.currentLevel)
@@ -56,25 +69,45 @@ function love.update(dt)
 
 	cam:lookAt(player:getX(), love.graphics.getHeight() / 2)
 	if hasWon then
-		player:setPosition(360, 100)
+		player.animation = animations.idle
+		player:setPosition(playerStartX, playerStartY)
 		player:setType("static")
 		destroyAll()
 	end
 end
 
 function love.draw()
+	love.graphics.draw(
+		sprites.background,
+		0,
+		0,
+		0,
+		love.graphics.getWidth() / sprites.background:getWidth(),
+		love.graphics.getHeight() / sprites.background:getHeight()
+	)
+
 	cam:attach()
-	world:draw()
+	-- world:draw()
 	gameMap:drawLayer(gameMap.layers["Tile Layer 1"])
 	drawPlayer()
 	drawEnemies()
 	cam:detach()
 
 	love.graphics.setColor(1, 1, 1)
-	love.graphics.print("Use arrow keys to move", 10, 10)
 	if hasWon then
+		love.graphics.setColor(0, 0, 0)
 		love.graphics.setFont(love.graphics.newFont(32))
-		love.graphics.print("You won! Press R to reset.", 10, 50)
+		love.graphics.printf(
+			"Hai vinto! Premi R per ricominciare",
+			0,
+			love.graphics.getHeight() / 2 - 150,
+			love.graphics.getWidth(),
+			"center"
+		)
+		love.graphics.setColor(1, 1, 1)
+	else
+		love.graphics.setFont(love.graphics.newFont(20))
+		love.graphics.print("Usa le frecce per muoverti", 10, 10)
 	end
 end
 
@@ -82,6 +115,7 @@ function love.keypressed(key)
 	if key == "up" then
 		if player.grounded then
 			player:applyLinearImpulse(0, -4000)
+			sounds.jump:play()
 		end
 	end
 	if key == "r" then
@@ -146,9 +180,14 @@ function destroyAll()
 end
 
 function loadMap(mapName)
-	player:setPosition(360, 100)
+	love.filesystem.write("data.lua", table.show(saveData, "saveData"))
 	destroyAll()
 	gameMap = sti("assets/maps/" .. mapName .. ".lua", { "bump" })
+	for _, obj in pairs(gameMap.layers["Start"].objects) do
+		playerStartX = obj.x
+		playerStartY = obj.y
+	end
+	player:setPosition(playerStartX, playerStartY)
 	for _, obj in pairs(gameMap.layers["Platforms"].objects) do
 		spawnPlatform(obj.x, obj.y, obj.width, obj.height, obj.name)
 	end
