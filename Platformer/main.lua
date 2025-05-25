@@ -1,85 +1,81 @@
 function love.load()
+	love.window.setMode(1000, 768)
+
 	anim8 = require("libraries/anim8/anim8")
+	sti = require("libraries/Simple-Tiled-Implementation/sti")
+	cameraFile = require("libraries/hump/camera")
+
+	cam = cameraFile()
 
 	sprites = {}
 	sprites.playerSheet = love.graphics.newImage("assets/sprites/playerSheet.png")
+	sprites.enemySheet = love.graphics.newImage("assets/sprites/enemySheet.png")
+	sprites.flag = love.graphics.newImage("assets/maps/flag.png")
 
 	local grid = anim8.newGrid(614, 564, sprites.playerSheet:getWidth(), sprites.playerSheet:getHeight())
+	local enemyGrid = anim8.newGrid(100, 79, sprites.enemySheet:getWidth(), sprites.enemySheet:getHeight())
 
 	animations = {}
 	animations.idle = anim8.newAnimation(grid("1-15", 1), 0.05)
 	animations.jump = anim8.newAnimation(grid("1-7", 2), 0.05)
 	animations.run = anim8.newAnimation(grid("1-15", 3), 0.05)
+	animations.enemy = anim8.newAnimation(enemyGrid("1-2", 1), 0.04)
 
-	wf = require("libraries/windfield/windfield")
+	wf = require("libraries.windfield.windfield")
 	world = wf.newWorld(0, 700, false)
 	world:setQueryDebugDrawing(true)
+	require("player")
+	require("enemy")
+	require("libraries.show")
 
 	world:addCollisionClass("Platform")
+	world:addCollisionClass("Goal")
 	world:addCollisionClass("Danger")
 	world:addCollisionClass("Player"--[[, { ignores = { "Platform" } }]])
 
-	player = world:newRectangleCollider(360, 100, 40, 100, { collision_class = "Player" })
-	player:setFixedRotation(true)
-	player.speed = 240
-	player.animation = animations.idle
-	player.isMoving = false
-	player.direction = 1
-	player.grounded = true
+	-- dangerZone = world:newRectangleCollider(0, 550, 800, 50, { collision_class = "Danger" })
+	-- dangerZone:setType("static")
 
-	platform = world:newRectangleCollider(250, 400, 300, 100, { collision_class = "Platform" })
-	platform:setType("static")
+	platforms = {}
 
-	dangerZone = world:newRectangleCollider(0, 550, 800, 50, { collision_class = "Danger" })
-	dangerZone:setType("static")
+	goals = {}
+
+	saveData = {}
+
+	saveData.currentLevel = 1
+	hasWon = false
+
+	loadMap("level" .. saveData.currentLevel)
 end
 
 function love.update(dt)
+	gameMap:update(dt)
 	world:update(dt)
+	updatePlayer(dt)
+	updateEnemies(dt)
 
-	if player.body then
-		local colliders = world:queryRectangleArea(player:getX() - 20, player:getY() + 50, 80, 2, { "Platform" })
-		if #colliders > 0 then
-			player.grounded = true
-		else
-			player.grounded = false
-		end
-
-		player.isMoving = false
-		local px, py = player:getPosition()
-		if love.keyboard.isDown("right") then
-			player:setX(px + player.speed * dt)
-			player.isMoving = true
-			player.direction = 1
-		end
-		if love.keyboard.isDown("left") then
-			player:setX(px - player.speed * dt)
-			player.isMoving = true
-			player.direction = -1
-		end
-
-		if player:enter("Danger") then
-			player:setPosition(360, 100)
-		end
+	cam:lookAt(player:getX(), love.graphics.getHeight() / 2)
+	if hasWon then
+		player:setPosition(360, 100)
+		player:setType("static")
+		destroyAll()
 	end
-
-	if player.grounded then
-		if player.isMoving then
-			player.animation = animations.run
-		else
-			player.animation = animations.idle
-		end
-	else
-		player.animation = animations.jump
-	end
-	player.animation:update(dt)
 end
 
 function love.draw()
+	cam:attach()
 	world:draw()
+	gameMap:drawLayer(gameMap.layers["Tile Layer 1"])
+	drawPlayer()
+	drawEnemies()
+	cam:detach()
 
-	local px, py = player:getPosition()
-	player.animation:draw(sprites.playerSheet, px, py, 0, 0.25 * player.direction, 0.25, 130, 300)
+	love.graphics.setColor(1, 1, 1)
+	love.graphics.print("Use arrow keys to move", 10, 10)
+	if hasWon then
+		love.graphics.setFont(love.graphics.newFont(32))
+		love.graphics.print("You won! Press R to reset.", 10, 50)
+	end
 end
 
 function love.keypressed(key)
@@ -88,13 +84,78 @@ function love.keypressed(key)
 			player:applyLinearImpulse(0, -4000)
 		end
 	end
+	if key == "r" then
+		hasWon = false
+		player:setType("dynamic")
+		saveData.currentLevel = 1
+		loadMap("level" .. saveData.currentLevel)
+	end
 end
 
 function love.mousepressed(x, y, button)
 	if button == 1 then
 		local colliders = world:queryCircleArea(x, y, 200, { "Platform", "Danger" })
-		for i, c in ipairs(colliders) do
+		for _, c in ipairs(colliders) do
 			c:destroy()
 		end
+	end
+end
+
+function spawnPlatform(x, y, width, height, name)
+	if width > 0 and height > 0 then
+		local newPlatform = world:newRectangleCollider(x, y, width, height, { collision_class = "Platform" })
+		newPlatform:setType("static")
+		newPlatform.name = name or "Platform"
+		table.insert(platforms, newPlatform)
+	end
+end
+
+function spawnGoals(x, y, width, height)
+	if width > 0 and height > 0 then
+		local newGoal = world:newRectangleCollider(x, y, width, height, { collision_class = "Goal" })
+		newGoal:setType("static")
+		table.insert(goals, newGoal)
+	end
+end
+
+function destroyAll()
+	local i = #platforms
+	while i > -1 do
+		if platforms[i] ~= nil then
+			platforms[i]:destroy()
+			table.remove(platforms, i)
+		end
+		i = i - 1
+	end
+	local j = #enemies
+	while j > -1 do
+		if enemies[j] ~= nil then
+			enemies[j]:destroy()
+			table.remove(enemies, j)
+		end
+		j = j - 1
+	end
+	local k = #goals
+	while k > -1 do
+		if goals[k] ~= nil then
+			goals[k]:destroy()
+			table.remove(goals, k)
+		end
+		k = k - 1
+	end
+end
+
+function loadMap(mapName)
+	player:setPosition(360, 100)
+	destroyAll()
+	gameMap = sti("assets/maps/" .. mapName .. ".lua", { "bump" })
+	for _, obj in pairs(gameMap.layers["Platforms"].objects) do
+		spawnPlatform(obj.x, obj.y, obj.width, obj.height, obj.name)
+	end
+	for _, obj in pairs(gameMap.layers["Enemies"].objects) do
+		spawnEnemy(obj.x, obj.y)
+	end
+	for _, obj in pairs(gameMap.layers["Flag"].objects) do
+		spawnGoals(obj.x, obj.y, obj.width, obj.height)
 	end
 end
